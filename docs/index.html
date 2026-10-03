@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Empty Dock · NYC Bike-Share Availability</title>
+  <meta name="description" content="Where and when NYC Citi Bike stations run out of bikes or docks. A Databricks medallion pipeline on live GBFS data.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #1f2933;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --bg: #fafaf9;
+      --card: #ffffff;
+      --red: #d64545;
+      --blue: #2b6cb0;
+      --soft: #f3f4f6;
+      --max: 1120px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 0.88em; }
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+
+    /* ---- Nav ---- */
+    nav {
+      position: sticky; top: 0; z-index: 10;
+      background: rgba(250, 250, 249, 0.9);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line);
+    }
+    nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 16px; }
+    .brand { font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+    .brand .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--red); margin-right: 8px; box-shadow: 14px 0 0 var(--blue); }
+    .brand span { margin-left: 14px; }
+    nav ul { list-style: none; display: flex; gap: 22px; margin: 0; padding: 0; font-size: 14px; }
+    nav ul a { color: var(--muted); }
+    nav ul a:hover { color: var(--ink); text-decoration: none; }
+
+    /* ---- Hero ---- */
+    header.hero { padding: 72px 0 48px; }
+    .eyebrow { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--red); margin: 0 0 14px; }
+    h1 { font-size: clamp(34px, 5vw, 54px); line-height: 1.08; letter-spacing: -0.025em; margin: 0 0 18px; max-width: 820px; }
+    h1 em { font-style: normal; background: linear-gradient(90deg, var(--red), var(--blue)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .lede { font-size: 19px; color: var(--muted); max-width: 720px; margin: 0 0 28px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+    .btn { display: inline-block; padding: 10px 18px; border-radius: 8px; font-weight: 600; font-size: 15px; border: 1px solid var(--ink); }
+    .btn.primary { background: var(--ink); color: #fff; }
+    .btn.ghost { color: var(--ink); background: transparent; }
+    .btn:hover { text-decoration: none; opacity: 0.88; }
+
+    /* ---- Stats ---- */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin: 44px 0 0; }
+    .stat { background: var(--card); padding: 20px 22px; }
+    .stat b { display: block; font-size: 28px; letter-spacing: -0.02em; }
+    .stat span { font-size: 13px; color: var(--muted); }
+
+    /* ---- Sections ---- */
+    section { padding: 56px 0; border-top: 1px solid var(--line); }
+    h2 { font-size: 28px; letter-spacing: -0.02em; margin: 0 0 8px; }
+    .section-intro { color: var(--muted); max-width: 720px; margin: 0 0 28px; }
+
+    /* ---- Pipeline ---- */
+    .pipeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; align-items: stretch; }
+    .stage { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; position: relative; }
+    .stage:not(:last-child)::after { content: "→"; position: absolute; right: -11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 16px; background: var(--bg); padding: 0 1px; }
+    .stage .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .stage h3 { font-size: 16px; margin: 6px 0 6px; }
+    .stage p { font-size: 13.5px; color: var(--muted); margin: 0; }
+    .tag.src { color: var(--muted); }
+    .tag.bronze { color: #a0612b; }
+    .tag.silver { color: #6b7280; }
+    .tag.gold { color: #b7791f; }
+    .tag.viz { color: var(--blue); }
+
+    /* ---- Chart cards ---- */
+    .chart { background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin: 0 0 40px; overflow: hidden; }
+    .chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 22px 24px 4px; }
+    .chart-head .num { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; }
+    .chart-head h3 { font-size: 20px; margin: 2px 0 4px; letter-spacing: -0.01em; }
+    .chart-head p { margin: 0; color: var(--muted); font-size: 15px; max-width: 700px; }
+    .chart-head a { white-space: nowrap; font-size: 14px; font-weight: 500; }
+    .frame { position: relative; width: 100%; background: var(--card); }
+    .frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+    .frame .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; pointer-events: none; }
+    .takeaway { margin: 0; padding: 14px 24px 18px; border-top: 1px solid var(--line); background: var(--soft); font-size: 14.5px; }
+    .takeaway b { color: var(--ink); }
+
+    /* ---- Story ---- */
+    .story { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; }
+    .card h3 { margin: 0 0 8px; font-size: 17px; }
+    .card p, .card li { color: var(--muted); font-size: 15px; }
+    .card ul { margin: 0; padding-left: 18px; }
+    .card .big { font-size: 40px; font-weight: 700; color: var(--red); letter-spacing: -0.03em; line-height: 1; margin: 4px 0 10px; }
+
+    .stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+    .pill { font-size: 13px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink); }
+
+    footer { padding: 36px 0 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+
+    @media (max-width: 860px) {
+      nav ul { display: none; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .pipeline { grid-template-columns: 1fr; }
+      .stage:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -15px; transform: translateX(-50%); }
+      .story { grid-template-columns: 1fr; }
+      .chart-head { flex-direction: column; }
+      header.hero { padding: 48px 0 32px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><i class="dot"></i><span>Empty Dock</span></a>
+    <ul>
+      <li><a href="#pipeline">Pipeline</a></li>
+      <li><a href="#charts">Charts</a></li>
+      <li><a href="#quality">Data quality</a></li>
+      <li><a href="https://github.com/YOUR-USERNAME/empty-dock">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <p class="eyebrow">Data analytics project · Databricks</p>
+    <h1>Where do New York's bikes <em>disappear to</em> every morning?</h1>
+    <p class="lede">
+      I built a pipeline that polls every Citi Bike station in NYC every 15 minutes, cleans the data through a
+      bronze → silver → gold lakehouse, and maps which stations run out of bikes or docks, and when.
+    </p>
+    <div class="buttons">
+      <a class="btn primary" href="#charts">Explore the charts</a>
+      <a class="btn ghost" href="https://github.com/YOUR-USERNAME/empty-dock">View the code</a>
+    </div>
+
+    <!-- Update these numbers after your collection window -->
+    <div class="stats">
+      <div class="stat"><b>2,500+</b><span>stations tracked</span></div>
+      <div class="stat"><b>15 min</b><span>polling interval</span></div>
+      <div class="stat"><b>280K+</b><span>station snapshots</span></div>
+      <div class="stat"><b>79</b><span>stations misclassified, then fixed</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="pipeline">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="section-intro">
+      A scheduled Databricks job fetches live data, then a declarative pipeline loads it incrementally and
+      refreshes every downstream table in dependency order.
+    </p>
+    <div class="pipeline">
+      <div class="stage"><div class="tag src">Source</div><h3>GBFS API</h3><p>Citi Bike's public station status and station info feeds.</p></div>
+      <div class="stage"><div class="tag bronze">Bronze</div><h3>Raw snapshots</h3><p>Auto Loader appends new JSON files as-is, with file lineage.</p></div>
+      <div class="stage"><div class="tag silver">Silver</div><h3>Clean rows</h3><p>One row per station per snapshot, typed and validated by expectations.</p></div>
+      <div class="stage"><div class="tag gold">Gold</div><h3>Metrics</h3><p>Hourly empty/full rates and a commute-pattern profile per station.</p></div>
+      <div class="stage"><div class="tag viz">Output</div><h3>Visuals</h3><p>AI/BI dashboard and the interactive Plotly charts below.</p></div>
+    </div>
+    <div class="stack">
+      <span class="pill">SQL</span><span class="pill">Python</span><span class="pill">Databricks</span>
+      <span class="pill">Delta Lake</span><span class="pill">Unity Catalog</span><span class="pill">Auto Loader</span>
+      <span class="pill">Lakeflow Declarative Pipelines</span><span class="pill">Plotly</span>
+    </div>
+  </div>
+</section>
+
+<section id="charts">
+  <div class="wrap">
+    <h2>What the data shows</h2>
+    <p class="section-intro">All charts are interactive: hover for details, scroll to zoom the maps. Times are NYC local time.</p>
+
+    <article class="chart">
+      <div class="chart-head">
+        <div>
+          <div class="num">01 · CITY PULSE</div>
+          <h3>When the system runs dry</h3>
+          <p>The share of station-time spent empty or full, hour by hour across the whole city.</p>
+        </div>
+        <a href="01_city_pulse.html" target="_blank" rel="noopener">Open full screen ↗</a>
+      </div>
+      <div class="frame" style="height:560px">
+        <div class="loading">Loading chart…</div>
+        <iframe src="01_city_pulse.html" title="City pulse chart" loading="lazy"></iframe>
+      </div>
+      <p class="takeaway"><b>Takeaway:</b> [TODO: e.g. emptiness peaks around 9am, when X% of operating stations have no bikes.]</p>
+    </article>
+
+    <article class="chart">
+      <div class="chart-head">
+        <div>
+          <div class="num">02 · STATION TYPES</div>
+          <h3>Every station has a personality</h3>
+          <p>Stations classified by their daily rhythm: residential stations drain in the morning, job centers drain in the evening.</p>
+        </div>
+        <a href="02_station_types_map.html" target="_blank" rel="noopener">Open full screen ↗</a>
+      </div>
+      <div class="frame" style="height:800px">
+        <div class="loading">Loading map…</div>
+        <iframe src="02_station_types_map.html" title="Station types map" loading="lazy"></iframe>
+      </div>
+      <p class="takeaway"><b>Takeaway:</b> [TODO: e.g. job centers concentrate in Midtown and the Financial District; residential stations ring them.]</p>
+    </article>
+
+    <article class="chart">
+      <div class="chart-head">
+        <div>
+          <div class="num">03 · A DAY IN 24 FRAMES</div>
+          <h3>Watch the city drain and refill</h3>
+          <p>Each station colored by bikes ÷ docks for every hour of the day. Press ▶ to play.</p>
+        </div>
+        <a href="03_hourly_animation_map.html" target="_blank" rel="noopener">Open full screen ↗</a>
+      </div>
+      <div class="frame" style="height:820px">
+        <div class="loading">Loading animation (a few MB)…</div>
+        <iframe src="03_hourly_animation_map.html" title="Animated hourly map" loading="lazy"></iframe>
+      </div>
+      <p class="takeaway"><b>Takeaway:</b> [TODO: describe what moves, e.g. Manhattan turns blue by 9am while Brooklyn turns red.]</p>
+    </article>
+
+    <article class="chart">
+      <div class="chart-head">
+        <div>
+          <div class="num">04 · DAILY SWING</div>
+          <h3>The stations that swing hardest</h3>
+          <p>The 40 most volatile stations, sorted by the hour they run lowest. The diagonal shows the morning and evening waves.</p>
+        </div>
+        <a href="04_daily_swing_heatmap.html" target="_blank" rel="noopener">Open full screen ↗</a>
+      </div>
+      <div class="frame" style="height:1160px">
+        <div class="loading">Loading heatmap…</div>
+        <iframe src="04_daily_swing_heatmap.html" title="Daily swing heatmap" loading="lazy"></iframe>
+      </div>
+      <p class="takeaway"><b>Takeaway:</b> [TODO: e.g. most volatile stations bottom out inside the 7–10am window, a clear target for a pre-rush rebalancing run.]</p>
+    </article>
+  </div>
+</section>
+
+<section id="quality">
+  <div class="wrap">
+    <h2>The bug that made the charts honest</h2>
+    <p class="section-intro">The first heatmap looked wrong. Tracking down why became the most useful part of the project.</p>
+    <div class="story">
+      <div class="card">
+        <h3>The symptom</h3>
+        <div class="big">79</div>
+        <p>stations appeared empty 100% of the time, crowding every "worst stations" ranking with a flat, meaningless block of color.</p>
+      </div>
+      <div class="card">
+        <h3>The causes</h3>
+        <ul>
+          <li>Operating flags arrived as <code>1</code>/<code>0</code> but were parsed as booleans, silently becoming <code>NULL</code>. Closed stations looked identical to drained ones.</li>
+          <li>Some stations had zero capacity, making them "empty" by definition.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>The fix</h3>
+        <ul>
+          <li>Parsed the flags as integers and derived booleans explicitly</li>
+          <li>Rebuilt silver from bronze, with no data re-fetched</li>
+          <li>Counted empty time only while a station is operating</li>
+          <li>Labeled dead stations as <b>Out of service</b></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>The safeguard</h3>
+        <p>A new pipeline expectation flags any unparsed operating status, so this failure now shows up in the pipeline UI instead of hiding in the numbers.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Personal project on public data from <a href="https://citibikenyc.com/system-data">Citi Bike</a>. Not affiliated with Lyft or Citi Bike.</span>
+    <span><a href="https://github.com/YOUR-USERNAME/empty-dock">GitHub</a> · <a href="https://www.linkedin.com/in/YOUR-PROFILE">LinkedIn</a></span>
+  </div>
+</footer>
+
+<script>
+  // Hide each "Loading…" label once its chart has loaded
+  document.querySelectorAll(".frame iframe").forEach(f => {
+    f.addEventListener("load", () => {
+      const label = f.parentElement.querySelector(".loading");
+      if (label) label.remove();
+    });
+  });
+</script>
+</body>
+</html>
