@@ -4,9 +4,8 @@ An end-to-end data pipeline on **Databricks** that ingests live Citi Bike statio
 
 > **Which NYC bike stations run out of bikes or docks, when, and why?**
 
-**[▶ View the interactive charts](https://ree3278.github.io/empty_dock/)** · [Dashboard screenshot](#dashboard_graph.png)
+**[▶ View the interactive charts](https://ree3278.github.io/empty_dock/)** · [Dashboard screenshot](../docs/dashboard_graph.png)
 
-![Animated map preview](docs/animation_preview.png)
 
 ---
 
